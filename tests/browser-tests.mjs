@@ -373,7 +373,14 @@ for (const vp of [
   { name: 'tablet landscape 1024×768', width: 1024, height: 768, touch: true },
   { name: 'narrow window 560×900', width: 560, height: 900, touch: true },
   { name: 'small phone 360×640', width: 360, height: 640, touch: true },
-  { name: 'tiny window 500×620', width: 500, height: 620 }
+  { name: 'tiny window 500×620', width: 500, height: 620 },
+  // Shapes where the stacked chrome is taller than the whole screen: a square
+  // foldable cover display, a handset in landscape, and the smallest phone
+  // still in the wild — each has to reach the side-by-side layout or shed its
+  // trimmings rather than push the controls below the fold.
+  { name: 'square touch 390×390', width: 390, height: 390, touch: true },
+  { name: 'pocket landscape 568×320', width: 568, height: 320, touch: true },
+  { name: 'tiny phone 320×480', width: 320, height: 480, touch: true, minBoard: 160 }
 ]) {
   const lctx = await browser.newContext({
     viewport: { width: vp.width, height: vp.height },
@@ -413,18 +420,45 @@ for (const vp of [
         const cab = box('.cabinet');
         const r = el.getBoundingClientRect();
         return r.width > 0 && (r.left < cab.left - 1 || r.right > cab.right + 1);
-      })
+      }),
+      // A pad drawn narrower than a fingertip is worse than no pad: where there
+      // is no room for one the board takes the width back and swipe steers.
+      key: getComputedStyle(document.querySelector('.dpad')).display === 'none'
+        ? 0 : box('.dpad__btn').width
     };
   });
   check(`${vp.name}: fits without scrolling`,
     fit.scrollH <= fit.innerH + 1 && fit.scrollW <= fit.innerW + 1);
   check(`${vp.name}: marquee and controls are both on screen`,
     fit.marqueeTop >= -1 && fit.controlsBottom <= fit.innerH + 1);
-  check(`${vp.name}: the board is still legible`, fit.board >= 180);
+  check(`${vp.name}: the board is still legible`, fit.board >= (vp.minBoard || 180));
   check(`${vp.name}: the stage stays square and clear of the chrome`,
     fit.square && !fit.overlapped);
   check(`${vp.name}: the attract screen reads inside the bezel`, !fit.clipped);
   check(`${vp.name}: nothing sticks out of the cabinet`, !fit.escaped);
+  if (vp.touch) {
+    check(`${vp.name}: the d-pad is either absent or big enough to hit`,
+      fit.key === 0 || fit.key >= 40);
+  }
+
+  // The final tally sets the score beside a label, so the number's budget is the
+  // row minus that label — not the whole screen, which used to run a five-digit
+  // score off the edge of the smallest board.
+  const tally = await lpage.evaluate(() => {
+    document.querySelector('.overlay').dataset.screen = 'over';
+    document.getElementById('final-score').dataset.pixel = '12345';
+    document.getElementById('final-best').dataset.pixel = '12345';
+    window.dispatchEvent(new Event('resize'));
+    return new Promise((done) => setTimeout(() => {
+      const stage = document.querySelector('.stage').getBoundingClientRect();
+      const inside = [...document.querySelectorAll('.tally canvas')].every((c) => {
+        const r = c.getBoundingClientRect();
+        return r.left >= stage.left - 1 && r.right <= stage.right + 1;
+      });
+      done(inside);
+    }, 350));
+  });
+  check(`${vp.name}: a five-digit final score fits inside the bezel`, tally);
   await lctx.close();
 }
 

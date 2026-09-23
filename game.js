@@ -164,6 +164,16 @@
     }
   }
 
+  /** Padding around the glyphs, which the glow and the title's offset live in. */
+  function pixelPad(scale) {
+    return Math.max(2, Math.round(scale * 1.4));
+  }
+
+  /** CSS width the canvas will take for this text at this scale. */
+  function pixelWidth(text, scale) {
+    return glyphColumns(String(text).toUpperCase()) * scale + pixelPad(scale) * 2;
+  }
+
   /**
    * Render pixel text into a canvas element.
    * `tone: 'title'` gets a chromatic pink offset behind a cyan gradient.
@@ -172,9 +182,8 @@
     text = String(text).toUpperCase();
     var isTitle = tone === 'title';
     var palette = TONES[tone] || TONES.cyan;
-    var cols = glyphColumns(text);
-    var pad = Math.max(2, Math.round(scale * 1.4));
-    var cssW = cols * scale + pad * 2;
+    var pad = pixelPad(scale);
+    var cssW = pixelWidth(text, scale);
     var cssH = GLYPH_H * scale + pad * 2;
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
 
@@ -211,24 +220,50 @@
   }
 
   /**
-   * Width budget for a pixel-text element. Overlay screens are shrink-wrapped
-   * (and sometimes hidden), so their own box is not a usable constraint —
-   * measure the overlay's content box instead.
+   * Width budget for a pixel-text element. Its own box is shrink-wrapped around
+   * the canvas we are about to size, so it cannot be the constraint — measure
+   * the nearest ancestor whose width comes from the layout instead.
    */
   function measureContainer(el) {
-    var host = el.closest('.overlay') || el.parentElement;
+    var host = el.closest('.overlay, .hud') || el.parentElement;
     if (!host || !host.clientWidth) return 280;
     var styles = window.getComputedStyle(host);
     var inner = host.clientWidth
       - parseFloat(styles.paddingLeft) - parseFloat(styles.paddingRight);
-    return inner > 0 ? inner : 280;
+    return Math.max(0, (inner > 0 ? inner : 280) - rowReservation(el));
   }
 
-  /** Largest integer scale at which this element's glyphs still fit. */
+  /**
+   * Width a readout has to leave for whatever shares its row. The game-over
+   * tally sets its score beside a label column, so the number gets the row
+   * minus that column, not the whole screen — measured rather than assumed, so
+   * it follows the stylesheet.
+   */
+  function rowReservation(el) {
+    var row = el.closest('.tally__row');
+    if (!row) return 0;
+    var gap = parseFloat(window.getComputedStyle(row).columnGap) || 0;
+    var taken = 0;
+    for (var i = 0; i < row.children.length; i++) {
+      var sibling = row.children[i];
+      if (sibling === el || sibling.contains(el)) continue;
+      taken += sibling.getBoundingClientRect().width + gap;
+    }
+    return taken;
+  }
+
+  /**
+   * Largest integer scale at which this element's glyphs still fit. Asks the
+   * renderer for the width it would produce rather than approximating it, so a
+   * five-digit score cannot end up a pixel wider than its budget.
+   */
   function fitScale(el, baseScale) {
-    var cols = glyphColumns(String(el.dataset.pixel || '').toUpperCase()) || 1;
-    var fitted = Math.floor((measureContainer(el) - 8) / cols);
-    return Math.max(1, Math.min(baseScale, fitted));
+    var text = String(el.dataset.pixel || '').toUpperCase() || '0';
+    var budget = measureContainer(el);
+    for (var scale = baseScale; scale > 1; scale--) {
+      if (pixelWidth(text, scale) <= budget) return scale;
+    }
+    return 1;
   }
 
   function groupMembers(group) {
@@ -421,6 +456,7 @@
    */
   function fitCabinet() {
     if (window.getComputedStyle(cabinet).getPropertyValue('--layout').trim() === 'side') {
+      cabinet.classList.remove('is-tight');
       cabinet.style.removeProperty('--board');
       return;
     }
@@ -429,6 +465,20 @@
     var room = function (side) { return parseFloat(page['padding' + side]) || 0; };
     var availW = document.documentElement.clientWidth - room('Left') - room('Right');
     var availH = document.documentElement.clientHeight - room('Top') - room('Bottom');
+
+    // Always weigh the full cabinet first, so growing the window undoes the trim.
+    cabinet.classList.remove('is-tight');
+    if (settle(availW, availH) <= BOARD_MIN) {
+      // The board has hit its floor, which means the chrome no longer fits
+      // around it: the cabinet sheds its trimmings and measures again rather
+      // than push the controls off the bottom of the screen.
+      cabinet.classList.add('is-tight');
+      settle(availW, availH);
+    }
+  }
+
+  /** Shrink --board until the chrome fits beside it; returns the size it settled on. */
+  function settle(availW, availH) {
     var size = Math.min(availW, BOARD_MAX);
 
     for (var pass = 0; pass < 4; pass++) {
@@ -439,6 +489,7 @@
       if (fits >= size) break;
       size = fits;
     }
+    return size;
   }
 
   function resizeBoard() {

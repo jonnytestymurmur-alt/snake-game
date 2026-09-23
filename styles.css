@@ -376,6 +376,9 @@ body {
 
 .screen__eyebrow {
   margin: 0;
+  /* On a narrow board these one-liners wrap, and the default break leaves an
+     orphan — "CREDITS" on one line and "01" alone on the next. */
+  text-wrap: balance;
   font-size: 9px;
   letter-spacing: 0.34em;
   text-indent: 0.34em;
@@ -410,6 +413,7 @@ body {
 
 .screen__hint {
   margin: 0;
+  text-wrap: balance;
   font-size: 10px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
@@ -584,6 +588,7 @@ kbd {
 .footnote {
   margin: 0;
   text-align: center;
+  text-wrap: balance;
   font-size: 9px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
@@ -653,6 +658,27 @@ kbd {
   .footnote { display: none; }
 }
 
+/* A board that has bottomed out (game.js sets .is-tight) means the chrome no
+   longer fits around it, so the chrome gives way twice over.
+
+   It stops shrink-wrapping to the board — a 180px cabinet wraps the scoreboard
+   onto a second row while 110px of screen sits unused beside it — and the board
+   is centred in it instead, like a real bezel. And it drops the pad, which at
+   this width has 20px keys, in favour of the swipe the footnote describes. */
+.cabinet.is-tight {
+  width: 100%;
+  gap: 10px;
+}
+
+.cabinet.is-tight .stage { width: min(100%, var(--board, 580px)); justify-self: center; }
+.cabinet.is-tight .dpad { display: none; }
+.cabinet.is-tight .controls { grid-template-columns: 1fr; }
+.cabinet.is-tight .marquee__tag { display: none; }
+
+@media (pointer: coarse) {
+  .cabinet.is-tight .footnote { display: block; }
+}
+
 /* --------------------------------------------------------------------------
    Landscape and short viewports
 
@@ -661,22 +687,29 @@ kbd {
    as its board. So when height is the scarce axis the cabinet turns on its
    side — the board takes the full height and the chrome sits beside it.
 
-   Two shapes ask for it: a squat window of any kind, and a landscape touch
-   screen, where the on-screen pad makes the stacked chrome tall enough to
-   shrink an iPad's board to a phone's.
+   Two shapes ask for it: a squat window of any kind, and a touch screen that is
+   landscape or square, where the on-screen pad makes the stacked chrome tall
+   enough to shrink an iPad's board to a phone's — and on a small handset in
+   landscape, tall enough to push the controls off the bottom of the screen
+   entirely. That is why the touch branch carries no lower width bound: the
+   narrower the landscape screen, the more it needs this layout, not less.
 
    -------------------------------------------------------------------------- */
 
 @media (max-height: 620px) and (min-width: 560px),
-       (pointer: coarse) and (min-aspect-ratio: 1 / 1) and (min-width: 700px) {
+       (pointer: coarse) and (min-aspect-ratio: 1 / 1) {
   body { align-items: center; }
 
   .cabinet {
     /* Here the chrome sits beside the board instead of above and below it, so
        the fit is plain arithmetic and CSS owns it (see .stage below). */
     --layout: side;
-    --side-col: 280px;
-    --col-gap: clamp(16px, 3vw, 28px);
+    /* The chrome column yields before the board does. A fixed 280px column is
+       most of a 390px-wide screen, which would leave a 66px board; capping it
+       by viewport width keeps the split sane. (At 700px and up, 40vw is 280px
+       or more, so roomy screens are unaffected.) */
+    --side-col: min(280px, 40vw);
+    --col-gap: clamp(12px, 3vw, 28px);
     width: auto;
     max-width: none;
     grid-template-columns: auto minmax(var(--side-col), 380px);
@@ -714,6 +747,31 @@ kbd {
   .marquee { gap: 4px; }
   .hud { padding: 8px 14px; }
   .legend { gap: 6px clamp(12px, 3vw, 20px); }
+
+  /* A handset in landscape has barely more height than the board is wide, and
+     the column has to fit in that same height: the rows close up and the
+     tagline, which is pure decoration, stands down. Wider screens keep both. */
+  @media (max-width: 700px) and (max-height: 420px) {
+    .cabinet { row-gap: 4px; }
+    .marquee__tag { display: none; }
+    .controls { gap: 10px; }
+  }
+
+  /* Below this the column is too narrow to hold a pad worth tapping: the keys
+     come out 25px across at 480px, 13px at 390px. Swiping the board steers just
+     as well, so the pad gives way — and with it the width it was holding, which
+     goes back to the board. */
+  @media (max-width: 599px) {
+    .cabinet { --side-col: max(112px, 32vw); }
+
+    .dpad { display: none; }
+    .controls { grid-template-columns: 1fr; }
+
+    /* The swipe hint earns its line back on the screens that need it. */
+    @media (pointer: coarse) {
+      .footnote { display: block; }
+    }
+  }
 }
 
 /* --------------------------------------------------------------------------
