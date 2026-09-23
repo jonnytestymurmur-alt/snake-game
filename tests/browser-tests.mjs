@@ -50,6 +50,12 @@ const snap = (page) => page.evaluate(() => window.neonSerpent.snapshot());
 const label = (page, sel) => page.getAttribute(sel, 'aria-label');
 const screenOf = (page) => page.getAttribute('#overlay', 'data-screen');
 
+/** Master gain once the 20ms mute ramp has finished. */
+async function settledGain(page) {
+  await page.waitForTimeout(120);
+  return (await snap(page)).masterGain;
+}
+
 /* ------------------------------ snake AI ------------------------------ */
 
 const key = (x, y) => `${x},${y}`;
@@ -259,11 +265,16 @@ check('enter restarts', (await screenOf(page)) === 'countdown');
 check('score reset on restart', (await snap(page)).score === 0);
 check('level reset on restart', (await snap(page)).level === 1);
 
-/* mute */
+/* mute: the button has to silence the audio graph, not just relabel itself —
+   effects are scheduled ahead, so anything already queued would otherwise play
+   on over an SFX OFF button. */
 await page.click('#sfx-toggle');
 check('mute toggles aria-pressed', (await page.getAttribute('#sfx-toggle', 'aria-pressed')) === 'false');
+const muted = await settledGain(page);
+check('the master gain is muted, not only the label', muted === 0);
 await page.keyboard.press('m');
 check('M key unmutes', (await page.getAttribute('#sfx-toggle', 'aria-pressed')) === 'true');
+check('unmute restores the master gain', (await settledGain(page)) > 0.1);
 
 /* high score persistence: score some points, then reload */
 await page.waitForTimeout(2400);

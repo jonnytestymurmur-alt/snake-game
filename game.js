@@ -329,6 +329,8 @@
    * 4. Audio — chiptune blips, created lazily on first user gesture
    * ------------------------------------------------------------------ */
 
+  var MASTER_GAIN = 0.16;
+
   var audio = {
     ctx: null,
     master: null,
@@ -342,7 +344,7 @@
         try {
           this.ctx = new Ctor();
           this.master = this.ctx.createGain();
-          this.master.gain.value = 0.16;
+          this.master.gain.value = MASTER_GAIN;
           this.master.connect(this.ctx.destination);
         } catch (err) {
           this.ctx = null;
@@ -351,6 +353,23 @@
       }
       if (this.ctx.state === 'suspended' && this.ctx.resume) this.ctx.resume();
       return this.ctx;
+    },
+
+    /**
+     * Mute at the master gain, not only at the source. Effects are scheduled
+     * ahead of time — the game-over fanfare queues a full second of notes in
+     * one go — so refusing to create new ones leaves the tail of the last one
+     * playing after the button already says SFX OFF. A short ramp rather than
+     * a jump: cutting a live oscillator to zero in one sample block clicks.
+     */
+    setMuted: function (value) {
+      this.muted = value;
+      if (!this.master) return;
+      var gain = this.master.gain;
+      var now = this.ctx.currentTime;
+      gain.cancelScheduledValues(now);
+      gain.setValueAtTime(gain.value, now);
+      gain.linearRampToValueAtTime(value ? 0 : MASTER_GAIN, now + 0.02);
     },
 
     tone: function (opts) {
@@ -1050,7 +1069,7 @@
   });
 
   function toggleMute() {
-    audio.muted = !audio.muted;
+    audio.setMuted(!audio.muted);
     store.set(KEY_MUTED, audio.muted ? '1' : '0');
     syncMuteUI();
     if (!audio.muted) audio.tone({ freq: 660, dur: 0.06, vol: 0.4 });
@@ -1165,6 +1184,9 @@
         cols: COLS,
         rows: ROWS,
         persistentStorage: store.persistent,
+        muted: audio.muted,
+        // Reads the live gain, so a test can tell a muted UI from a muted graph.
+        masterGain: audio.master ? audio.master.gain.value : null,
         food: food ? { x: food.x, y: food.y } : null,
         snake: snake.map(function (s) { return { x: s.x, y: s.y }; })
       };
