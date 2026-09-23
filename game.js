@@ -55,21 +55,33 @@
     } catch (err) {
       persistent = false;
     }
-    return {
+    // `persistent` is public because it also drives the game-over notice, and a
+    // write can fail long after the probe succeeded — a full quota, or Safari
+    // revoking storage mid-session. The first failed write demotes the whole
+    // session to memory so the notice is honest about where the score lives.
+    var api = {
       persistent: persistent,
       get: function (key) {
-        if (persistent) {
+        // Anything written this session is authoritative: after a failed write
+        // localStorage holds a stale value, and returning it would lose points.
+        if (Object.prototype.hasOwnProperty.call(memory, key)) return memory[key];
+        if (api.persistent) {
           try { return window.localStorage.getItem(key); } catch (err) { /* fall through */ }
         }
-        return Object.prototype.hasOwnProperty.call(memory, key) ? memory[key] : null;
+        return null;
       },
       set: function (key, value) {
         memory[key] = String(value);
-        if (persistent) {
-          try { window.localStorage.setItem(key, String(value)); } catch (err) { /* ignore */ }
+        if (api.persistent) {
+          try {
+            window.localStorage.setItem(key, String(value));
+          } catch (err) {
+            api.persistent = false;
+          }
         }
       }
     };
+    return api;
   }());
 
   /* ------------------------------------------------------------------ *
@@ -364,6 +376,7 @@
    * 5. DOM references
    * ------------------------------------------------------------------ */
 
+  var cabinet = document.querySelector('.cabinet');
   var stage = document.getElementById('stage');
   var canvas = document.getElementById('board');
   var ctx = canvas.getContext('2d');
@@ -387,6 +400,46 @@
 
   var cell = 20;      // CSS px per grid cell
   var boardSize = 0;  // CSS px, square
+
+  var BOARD_MAX = 580; // widest the cabinet ever goes, for legibility not fit
+  var BOARD_MIN = 180; // below this the arena stops being readable
+
+  /**
+   * Give the cabinet the widest square board that still leaves room for the
+   * marquee, HUD and controls stacked around it.
+   *
+   * It has to be measured rather than declared: the cabinet is as wide as the
+   * board, and the chrome is as tall as that width makes it — the pixel title
+   * drops to a smaller integer scale as it narrows, the controls rewrap. So the
+   * size of the board depends on a height that depends on the size of the board.
+   * Guessing a constant was wrong by up to 81px across the width range. Instead
+   * start from the widest candidate and re-measure; the estimate only ever
+   * shrinks, so it settles, in practice on the second pass.
+   *
+   * The side-by-side layout puts the chrome beside the board instead, which
+   * breaks the circle — CSS sizes that one, and says so through --layout.
+   */
+  function fitCabinet() {
+    if (window.getComputedStyle(cabinet).getPropertyValue('--layout').trim() === 'side') {
+      cabinet.style.removeProperty('--board');
+      return;
+    }
+
+    var page = window.getComputedStyle(document.body);
+    var room = function (side) { return parseFloat(page['padding' + side]) || 0; };
+    var availW = document.documentElement.clientWidth - room('Left') - room('Right');
+    var availH = document.documentElement.clientHeight - room('Top') - room('Bottom');
+    var size = Math.min(availW, BOARD_MAX);
+
+    for (var pass = 0; pass < 4; pass++) {
+      cabinet.style.setProperty('--board', size + 'px');
+      repaintAllPixelText(); // the title's scale follows the width it is given
+      var chrome = cabinet.offsetHeight - stage.offsetHeight;
+      var fits = Math.max(BOARD_MIN, Math.min(size, Math.floor(availH - chrome)));
+      if (fits >= size) break;
+      size = fits;
+    }
+  }
 
   function resizeBoard() {
     var styles = window.getComputedStyle(stage);
@@ -973,8 +1026,9 @@
   window.addEventListener('resize', function () {
     window.clearTimeout(resizeTimer);
     resizeTimer = window.setTimeout(function () {
-      resizeBoard();
+      fitCabinet();
       repaintAllPixelText();
+      resizeBoard();
     }, 80);
   });
 
@@ -1032,6 +1086,7 @@
   }
 
   function boot() {
+    fitCabinet();
     resizeBoard();
     resetGame();
     syncMuteUI();

@@ -204,8 +204,10 @@ check('each level is faster than the last',
   levels.every((l, i) => i === 0 || speeds.get(l) < speeds.get(levels[i - 1])));
 log('step interval per level:', JSON.stringify([...speeds.entries()]));
 
-// Reversal guard
-if ((await screenOf(page)) === 'playing') {
+// Reversal guard — on a fresh game, because a long snake left wherever the bot
+// parked it can hit a wall inside the window we are measuring.
+check('fresh game for the reversal guard', await freshGame(page));
+{
   const before = await snap(page);
   const opposite = { up: 'ArrowDown', down: 'ArrowUp', left: 'ArrowRight', right: 'ArrowLeft' }[before.dir];
   await page.keyboard.press(opposite);
@@ -364,7 +366,14 @@ for (const vp of [
   { name: 'phone portrait 390×844', width: 390, height: 844, touch: true },
   { name: 'phone landscape 844×390', width: 844, height: 390, touch: true },
   { name: 'short window 1280×500', width: 1280, height: 500 },
-  { name: 'small window 700×620', width: 700, height: 620 }
+  { name: 'small window 700×620', width: 700, height: 620 },
+  // Widths where the chrome is tallest: the d-pad is on and the pixel title has
+  // scaled up. A fixed chrome constant used to under-reserve here by up to 81px.
+  { name: 'tablet portrait 760×900', width: 760, height: 900, touch: true },
+  { name: 'tablet landscape 1024×768', width: 1024, height: 768, touch: true },
+  { name: 'narrow window 560×900', width: 560, height: 900, touch: true },
+  { name: 'small phone 360×640', width: 360, height: 640, touch: true },
+  { name: 'tiny window 500×620', width: 500, height: 620 }
 ]) {
   const lctx = await browser.newContext({
     viewport: { width: vp.width, height: vp.height },
@@ -375,22 +384,69 @@ for (const vp of [
   lpage.on('pageerror', (e) => { failures++; console.log('✗ LAYOUT PAGE ERROR', e.message); });
   await lpage.goto(URL);
   await lpage.waitForTimeout(400);
-  const fit = await lpage.evaluate(() => ({
-    scrollH: document.documentElement.scrollHeight,
-    scrollW: document.documentElement.scrollWidth,
-    innerH: window.innerHeight,
-    innerW: window.innerWidth,
-    controlsBottom: document.querySelector('.controls').getBoundingClientRect().bottom,
-    marqueeTop: document.querySelector('.marquee').getBoundingClientRect().top,
-    board: document.querySelector('#board').getBoundingClientRect().width
-  }));
+  const fit = await lpage.evaluate(() => {
+    const box = (sel) => document.querySelector(sel).getBoundingClientRect();
+    const stage = box('.stage');
+    const hits = (sel) => {
+      const r = box(sel);
+      return r.left < stage.right - 1 && r.right > stage.left + 1
+        && r.top < stage.bottom - 1 && r.bottom > stage.top + 1;
+    };
+    return {
+      scrollH: document.documentElement.scrollHeight,
+      scrollW: document.documentElement.scrollWidth,
+      innerH: window.innerHeight,
+      innerW: window.innerWidth,
+      controlsBottom: box('.controls').bottom,
+      marqueeTop: box('.marquee').top,
+      board: box('#board').width,
+      square: Math.abs(stage.width - stage.height) <= 1,
+      overlapped: ['.marquee', '.hud', '.controls'].some(hits),
+      // A narrow cabinet must make its contents smaller, not push them past its
+      // own edges: the attract text has to wrap inside the bezel and the pad and
+      // start button have to stay under the board.
+      clipped: [...document.querySelectorAll('.screen--attract > *')].some((el) => {
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && (r.left < stage.left - 1 || r.right > stage.right + 1);
+      }),
+      escaped: [...document.querySelectorAll('.cabinet > *, .dpad, .action')].some((el) => {
+        const cab = box('.cabinet');
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && (r.left < cab.left - 1 || r.right > cab.right + 1);
+      })
+    };
+  });
   check(`${vp.name}: fits without scrolling`,
     fit.scrollH <= fit.innerH + 1 && fit.scrollW <= fit.innerW + 1);
   check(`${vp.name}: marquee and controls are both on screen`,
     fit.marqueeTop >= -1 && fit.controlsBottom <= fit.innerH + 1);
   check(`${vp.name}: the board is still legible`, fit.board >= 180);
+  check(`${vp.name}: the stage stays square and clear of the chrome`,
+    fit.square && !fit.overlapped);
+  check(`${vp.name}: the attract screen reads inside the bezel`, !fit.clipped);
+  check(`${vp.name}: nothing sticks out of the cabinet`, !fit.escaped);
   await lctx.close();
 }
+
+/* the fit is recomputed when the window changes shape, not only on load */
+const zctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, hasTouch: true, isMobile: true });
+const zpage = await zctx.newPage();
+zpage.on('pageerror', (e) => { failures++; console.log('✗ RESIZE PAGE ERROR', e.message); });
+await zpage.goto(URL);
+for (const [w, h] of [[844, 390], [390, 844], [760, 900], [1280, 900]]) {
+  await zpage.setViewportSize({ width: w, height: h });
+  await zpage.waitForTimeout(300);
+  const fit = await zpage.evaluate(() => ({
+    scrollH: document.documentElement.scrollHeight,
+    scrollW: document.documentElement.scrollWidth,
+    innerH: window.innerHeight,
+    innerW: window.innerWidth,
+    board: document.querySelector('#board').getBoundingClientRect().width
+  }));
+  check(`resized to ${w}×${h}: still fits and stays legible`,
+    fit.scrollH <= fit.innerH + 1 && fit.scrollW <= fit.innerW + 1 && fit.board >= 180);
+}
+await zctx.close();
 
 /* Space and Enter belong to whichever control has keyboard focus */
 const kctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
@@ -458,6 +514,38 @@ await rpage.keyboard.press('Space');
 await rpage.waitForTimeout(2500);
 check('reduced motion still plays', (await screenOf(rpage)) === 'playing');
 await rctx.close();
+
+/* a write that fails after the probe succeeded (quota, revoked permission)
+   must demote the session to memory rather than trust stale stored data */
+const qctx = await browser.newContext({ viewport: { width: 1000, height: 820 } });
+const qpage = await qctx.newPage();
+qpage.on('pageerror', (e) => { failures++; console.log('✗ QUOTA PAGE ERROR', e.message); });
+await qpage.goto(URL);
+await qpage.waitForTimeout(300);
+check('storage starts out persistent', (await snap(qpage)).persistentStorage === true);
+await qpage.evaluate(() => {
+  Object.defineProperty(window.localStorage, 'setItem', {
+    configurable: true,
+    value: () => { throw new Error('QuotaExceededError'); }
+  });
+});
+await qpage.click('#sfx-toggle'); // persists the mute flag, and fails to
+check('a failed write marks storage non-persistent',
+  (await snap(qpage)).persistentStorage === false);
+await qpage.keyboard.press('Space');
+await qpage.waitForTimeout(2600);
+await playSmart(qpage, { untilScore: 20, maxSteps: 120 });
+check('the score still tracks in memory after storage fails',
+  (await snap(qpage)).best > 0);
+for (let i = 0; i < 90 && (await snap(qpage)).phase === 'playing'; i++) {
+  await qpage.keyboard.press('ArrowUp'); // straight into the top wall
+  await qpage.waitForTimeout(80);
+}
+await qpage.waitForTimeout(1200); // the death animation
+check('the game-over screen owns up to the lost storage',
+  (await screenOf(qpage)) === 'over'
+  && await qpage.evaluate(() => !document.getElementById('storage-note').hidden));
+await qctx.close();
 
 /* file:// — localStorage is blocked there, the fallback must hold */
 const fctx = await browser.newContext({ viewport: { width: 1000, height: 820 } });
