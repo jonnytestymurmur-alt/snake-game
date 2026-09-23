@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#04050a">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="Neon Serpent — a retro 1980s arcade snake game built with plain HTML, CSS and vanilla JavaScript.">
+<title>Neon Serpent — Retro Arcade Snake</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2304050a'/%3E%3Crect x='2' y='7' width='8' height='2' fill='%235ef3ff'/%3E%3Crect x='11' y='6' width='3' height='3' fill='%23ff2d87'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="cabinet">
+
+  <header class="marquee">
+    <h1 class="marquee__title" data-pixel="NEON SERPENT" data-tone="title" data-scale="7"></h1>
+    <p class="marquee__tag">Serpent Protocol <span aria-hidden="true">//</span> 1985</p>
+  </header>
+
+  <section class="hud" aria-label="Scoreboard">
+    <div class="stat">
+      <span class="stat__label">Score</span>
+      <span class="stat__value" id="stat-score" data-pixel-group="hud" data-pixel="0" data-tone="cyan" data-scale="4"></span>
+    </div>
+    <div class="stat">
+      <span class="stat__label">Best</span>
+      <span class="stat__value" id="stat-best" data-pixel-group="hud" data-pixel="0" data-tone="amber" data-scale="4"></span>
+    </div>
+    <div class="stat">
+      <span class="stat__label">Level</span>
+      <span class="stat__value" id="stat-level" data-pixel-group="hud" data-pixel="1" data-tone="pink" data-scale="4"></span>
+    </div>
+    <button class="sfx" id="sfx-toggle" type="button" aria-pressed="true" aria-label="Sound effects: on">
+      <svg class="sfx__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path class="sfx__horn" d="M4 9h4l5-4v14l-5-4H4z"/>
+        <path class="sfx__wave" d="M16.5 8.5a5 5 0 0 1 0 7"/>
+        <path class="sfx__wave sfx__wave--far" d="M19 6a8.5 8.5 0 0 1 0 12"/>
+        <path class="sfx__cross" d="M16.5 9.5l5 5m0-5l-5 5"/>
+      </svg>
+      <span class="sfx__text" id="sfx-text">SFX ON</span>
+    </button>
+  </section>
+
+  <section class="stage" id="stage">
+    <canvas id="board" role="img" aria-label="Snake game board"></canvas>
+    <div class="crt" aria-hidden="true"></div>
+
+    <div class="overlay" id="overlay" data-screen="attract">
+
+      <div class="screen screen--attract" data-for="attract">
+        <p class="screen__eyebrow">Insert coin&nbsp;<span aria-hidden="true">·</span> Credits 01</p>
+        <p class="screen__start" data-pixel="PRESS START" data-tone="cyan" data-scale="5"></p>
+        <p class="screen__hint">Space or tap to begin</p>
+        <ul class="legend">
+          <li><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd><span>Steer</span></li>
+          <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Steer</span></li>
+          <li><kbd>Space</kbd><span>Start / Pause</span></li>
+          <li><kbd>M</kbd><span>Mute</span></li>
+        </ul>
+      </div>
+
+      <div class="screen screen--countdown" data-for="countdown">
+        <p class="screen__count" id="countdown-text" data-pixel="3" data-tone="cyan" data-scale="16"></p>
+      </div>
+
+      <div class="screen screen--paused" data-for="paused">
+        <p class="screen__headline" data-pixel="PAUSED" data-tone="amber" data-scale="8"></p>
+        <p class="screen__hint">Space to resume</p>
+      </div>
+
+      <div class="screen screen--over" data-for="over">
+        <p class="screen__headline screen__headline--over" data-pixel="GAME OVER" data-tone="pink" data-scale="7"></p>
+        <dl class="tally">
+          <div class="tally__row"><dt>Score</dt><dd id="final-score" data-pixel-group="tally" data-pixel="0" data-tone="cyan" data-scale="5"></dd></div>
+          <div class="tally__row"><dt>Best</dt><dd id="final-best" data-pixel-group="tally" data-pixel="0" data-tone="amber" data-scale="5"></dd></div>
+        </dl>
+        <p class="screen__record" id="record-banner" data-pixel="NEW HIGH SCORE" data-tone="amber" data-scale="4" hidden></p>
+        <p class="screen__hint">Enter or tap to play again</p>
+        <p class="screen__note" id="storage-note" hidden>Local storage unavailable — best score lasts this session only.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section class="controls">
+    <div class="dpad" role="group" aria-label="Directional pad">
+      <button class="dpad__btn dpad__btn--up" type="button" data-dir="up" aria-label="Move up">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7l6 10H6z"/></svg>
+      </button>
+      <button class="dpad__btn dpad__btn--left" type="button" data-dir="left" aria-label="Move left">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 12l10-6v12z"/></svg>
+      </button>
+      <span class="dpad__hub" aria-hidden="true"></span>
+      <button class="dpad__btn dpad__btn--right" type="button" data-dir="right" aria-label="Move right">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 12L7 18V6z"/></svg>
+      </button>
+      <button class="dpad__btn dpad__btn--down" type="button" data-dir="down" aria-label="Move down">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17L6 7h12z"/></svg>
+      </button>
+    </div>
+    <button class="action" id="action-btn" type="button">Press Start</button>
+  </section>
+
+  <p class="footnote">Swipe the board to steer&nbsp;<span aria-hidden="true">·</span> tap to pause</p>
+</div>
+
+<p class="visually-hidden" id="live-status" role="status" aria-live="polite"></p>
+
+<script src="game.js"></script>
+</body>
+</html>
