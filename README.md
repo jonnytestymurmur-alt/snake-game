@@ -33,6 +33,10 @@ python3 -m http.server 8000     # then visit http://localhost:8000
 | Tap the board | Start · pause · resume (touch) |
 | On-screen d-pad | Steer (shown on touch devices and narrow screens) |
 
+`Space` and `Enter` belong to whichever control has keyboard focus, so tabbing to the
+mute toggle, the d-pad or the start button and pressing them does what that control
+says rather than starting or pausing the game.
+
 The game also pauses itself whenever the tab or window loses focus.
 
 ## How it plays
@@ -69,6 +73,11 @@ Notable implementation details:
 - **Audio.** Square/triangle/saw blips are synthesised with the Web Audio API. The
   `AudioContext` is created lazily inside a user gesture, so nothing plays before the
   player interacts. The mute state persists in `localStorage`.
+- **Layout.** The board is sized from the height left over after the marquee, HUD and
+  controls, so the cabinet shrinks instead of pushing anything below the fold. On short
+  viewports — a phone in landscape, a squat desktop window — the cabinet turns on its
+  side and the chrome moves beside the board. Every edge reserves its own
+  `safe-area-inset`, so nothing hides under a display cutout.
 - **Reduced motion.** `prefers-reduced-motion: reduce` disables the shake, flicker,
   particles and score pops; the game stays fully playable.
 
@@ -86,7 +95,9 @@ tail-following autopilot and asserts, among other things: food never spawns insi
 snake, the snake never leaves the board or overlaps itself, each level is faster than
 the last, reversals are ignored, pause/resume/tab-blur freeze the simulation, wall and
 self collisions end the run, restarts reset the score, the high score persists across a
-reload, and the mobile layout, d-pad, tap-to-pause and swipe steering all work.
+reload, the cabinet fits without scrolling at five viewport shapes (including a phone
+in landscape), keyboard activation of the focused control is not stolen by the game,
+and the mobile layout, d-pad, tap-to-pause and swipe steering all work.
 Screenshots are written to `screenshots/`.
 
 To make that possible `game.js` exposes one read-only seam, `window.neonSerpent.snapshot()`,

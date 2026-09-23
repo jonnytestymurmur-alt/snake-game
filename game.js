@@ -212,6 +212,33 @@
     return inner > 0 ? inner : 280;
   }
 
+  /** Largest integer scale at which this element's glyphs still fit. */
+  function fitScale(el, baseScale) {
+    var cols = glyphColumns(String(el.dataset.pixel || '').toUpperCase()) || 1;
+    var fitted = Math.floor((measureContainer(el) - 8) / cols);
+    return Math.max(1, Math.min(baseScale, fitted));
+  }
+
+  function groupMembers(group) {
+    return document.querySelectorAll('[data-pixel-group="' + group + '"]');
+  }
+
+  /**
+   * Readouts that sit side by side (the scoreboard, the final tally) share one
+   * scale, so a long score never renders smaller than the label next to it.
+   */
+  function scaleFor(el, baseScale) {
+    var group = el.dataset.pixelGroup;
+    if (!group) return fitScale(el, baseScale);
+
+    var peers = groupMembers(group);
+    var scale = baseScale;
+    for (var i = 0; i < peers.length; i++) {
+      scale = Math.min(scale, fitScale(peers[i], baseScale));
+    }
+    return scale;
+  }
+
   /** Every [data-pixel] element owns one canvas that is re-fit on resize. */
   function paintPixelElement(el) {
     var text = String(el.dataset.pixel || '').toUpperCase();
@@ -232,17 +259,18 @@
     }
     el.setAttribute('aria-label', text);
 
-    var cols = glyphColumns(text) || 1;
-    var fitted = Math.floor((measureContainer(el) - 8) / cols);
-    var scale = Math.max(1, Math.min(baseScale, fitted));
-
-    renderPixelText(canvas, text, tone, scale);
+    renderPixelText(canvas, text, tone, scaleFor(el, baseScale));
   }
 
   function setPixelText(el, text) {
     if (String(el.dataset.pixel) === String(text)) return;
     el.dataset.pixel = String(text);
-    paintPixelElement(el);
+
+    // A longer value can shrink the whole group, so repaint its peers too.
+    var group = el.dataset.pixelGroup;
+    if (!group) { paintPixelElement(el); return; }
+    var peers = groupMembers(group);
+    for (var i = 0; i < peers.length; i++) paintPixelElement(peers[i]);
   }
 
   function repaintAllPixelText() {
@@ -811,7 +839,18 @@
     if (phase === 'attract') startGame();
     else if (phase === 'playing' || phase === 'countdown') pauseGame();
     else if (phase === 'paused') resumeGame();
-    else if (phase === 'over') startGame();
+    // The action button already reads "Play Again" during the death animation.
+    else if (phase === 'over' || phase === 'dying') startGame();
+  }
+
+  // Space and Enter belong to the focused control, not the game, whenever one
+  // has keyboard focus — otherwise the d-pad and the mute toggle can never be
+  // activated from the keyboard.
+  var INTERACTIVE = 'button, a[href], input, select, textarea, [tabindex]';
+
+  function isControlFocused(event) {
+    var target = event.target;
+    return !!(target && target.closest && target.closest(INTERACTIVE));
   }
 
   var KEY_DIRS = {
@@ -830,14 +869,10 @@
       queueDirection(mapped);
       return;
     }
-    if (key === ' ' || key === 'Spacebar') {
+    if (key === ' ' || key === 'Spacebar' || key === 'Enter') {
+      if (isControlFocused(event)) return; // let the control activate itself
       event.preventDefault();
-      primaryAction();
-      return;
-    }
-    if (key === 'Enter') {
-      event.preventDefault();
-      if (phase === 'over' || phase === 'attract') startGame();
+      if (key === 'Enter' && (phase === 'over' || phase === 'attract')) startGame();
       else primaryAction();
       return;
     }
@@ -862,16 +897,17 @@
     button.addEventListener('pointerleave', release);
     button.addEventListener('pointercancel', release);
     button.addEventListener('contextmenu', function (e) { e.preventDefault(); });
-    // Keyboard activation of a focused pad button
+    // Keyboard activation of a focused pad button (pointers are handled above;
+    // a keyboard-synthesised click reports detail 0).
     button.addEventListener('click', function (event) {
-      event.preventDefault();
+      if (event.detail) return;
       queueDirection(button.dataset.dir);
     });
   });
 
-  actionBtn.addEventListener('click', function () {
+  actionBtn.addEventListener('click', function (event) {
     primaryAction();
-    actionBtn.blur();
+    if (event.detail) actionBtn.blur(); // keyboard users keep their focus ring
   });
 
   // Swipe + tap on the board
@@ -922,9 +958,9 @@
     sfxText.textContent = audio.muted ? 'SFX OFF' : 'SFX ON';
   }
 
-  sfxToggle.addEventListener('click', function () {
+  sfxToggle.addEventListener('click', function (event) {
     toggleMute();
-    sfxToggle.blur();
+    if (event.detail) sfxToggle.blur(); // keyboard users keep their focus ring
   });
 
   // Pause whenever the tab or window loses focus

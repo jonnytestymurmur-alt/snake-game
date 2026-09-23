@@ -358,6 +358,96 @@ check('captured mobile gameplay screenshot', mrun.shotTaken);
 
 await mctx.close();
 
+/* the whole cabinet stays above the fold on every shape of viewport */
+for (const vp of [
+  { name: 'desktop 1280×900', width: 1280, height: 900 },
+  { name: 'phone portrait 390×844', width: 390, height: 844, touch: true },
+  { name: 'phone landscape 844×390', width: 844, height: 390, touch: true },
+  { name: 'short window 1280×500', width: 1280, height: 500 },
+  { name: 'small window 700×620', width: 700, height: 620 }
+]) {
+  const lctx = await browser.newContext({
+    viewport: { width: vp.width, height: vp.height },
+    isMobile: !!vp.touch,
+    hasTouch: !!vp.touch
+  });
+  const lpage = await lctx.newPage();
+  lpage.on('pageerror', (e) => { failures++; console.log('✗ LAYOUT PAGE ERROR', e.message); });
+  await lpage.goto(URL);
+  await lpage.waitForTimeout(400);
+  const fit = await lpage.evaluate(() => ({
+    scrollH: document.documentElement.scrollHeight,
+    scrollW: document.documentElement.scrollWidth,
+    innerH: window.innerHeight,
+    innerW: window.innerWidth,
+    controlsBottom: document.querySelector('.controls').getBoundingClientRect().bottom,
+    marqueeTop: document.querySelector('.marquee').getBoundingClientRect().top,
+    board: document.querySelector('#board').getBoundingClientRect().width
+  }));
+  check(`${vp.name}: fits without scrolling`,
+    fit.scrollH <= fit.innerH + 1 && fit.scrollW <= fit.innerW + 1);
+  check(`${vp.name}: marquee and controls are both on screen`,
+    fit.marqueeTop >= -1 && fit.controlsBottom <= fit.innerH + 1);
+  check(`${vp.name}: the board is still legible`, fit.board >= 180);
+  await lctx.close();
+}
+
+/* Space and Enter belong to whichever control has keyboard focus */
+const kctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+const kpage = await kctx.newPage();
+kpage.on('pageerror', (e) => { failures++; console.log('✗ KEYBOARD PAGE ERROR', e.message); });
+await kpage.goto(URL);
+await kpage.waitForTimeout(400);
+
+await kpage.focus('#sfx-toggle');
+await kpage.keyboard.press('Space');
+await kpage.waitForTimeout(200);
+check('space on the focused mute toggle mutes', (await kpage.getAttribute('#sfx-toggle', 'aria-pressed')) === 'false');
+check('space on the focused mute toggle does not start the game', (await screenOf(kpage)) === 'attract');
+check('keyboard activation keeps focus on the toggle',
+  await kpage.evaluate(() => document.activeElement.id === 'sfx-toggle'));
+await kpage.keyboard.press('Enter');
+await kpage.waitForTimeout(200);
+check('enter on the focused mute toggle unmutes', (await kpage.getAttribute('#sfx-toggle', 'aria-pressed')) === 'true');
+
+await kpage.focus('.dpad__btn--down');
+await kpage.keyboard.press('Space');
+await kpage.waitForTimeout(200);
+check('space on a focused d-pad button starts the game', (await screenOf(kpage)) === 'countdown');
+await kpage.waitForTimeout(2500);
+await kpage.focus('.dpad__btn--down');
+await kpage.keyboard.press('Enter');
+await kpage.waitForTimeout(400);
+const kdown = await snap(kpage);
+check('enter on a focused d-pad button steers instead of pausing',
+  kdown.phase === 'playing' && kdown.dir === 'down');
+
+await kpage.focus('#action-btn');
+await kpage.keyboard.press('Space');
+await kpage.waitForTimeout(250);
+check('space on the focused action button pauses', (await screenOf(kpage)) === 'paused');
+await kpage.evaluate(() => document.activeElement.blur());
+await kpage.keyboard.press('Space');
+await kpage.waitForTimeout(250);
+check('space with nothing focused still drives the game',
+  ['countdown', 'playing'].includes(await screenOf(kpage)));
+
+/* "Play Again" works during the death animation, not only after it */
+await kpage.reload();
+await kpage.waitForTimeout(350);
+await kpage.keyboard.press('Space');
+await kpage.waitForTimeout(2500);
+for (let i = 0; i < 40 && (await snap(kpage)).phase === 'playing'; i++) await kpage.waitForTimeout(60);
+check('the death animation is reached', (await snap(kpage)).phase === 'dying');
+check('the action button offers Play Again while dying',
+  (await kpage.textContent('#action-btn')) === 'Play Again');
+await kpage.click('#action-btn');
+await kpage.waitForTimeout(250);
+const restarted = await snap(kpage);
+check('Play Again restarts during the death animation',
+  restarted.phase === 'countdown' && restarted.score === 0);
+await kctx.close();
+
 /* reduced motion */
 const rctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
 const rpage = await rctx.newPage();

@@ -24,6 +24,14 @@
   --radius-lg:  18px;
   --radius-sm:  10px;
   --gutter:     clamp(14px, 3.5vw, 22px);
+  --pad-block:  clamp(16px, 4vw, 40px);
+
+  /* Vertical space the page frame takes away from the board */
+  --frame: calc(
+    var(--pad-block) * 2
+    + env(safe-area-inset-top, 0px)
+    + env(safe-area-inset-bottom, 0px)
+  );
 
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas,
                "DejaVu Sans Mono", "Liberation Mono", monospace;
@@ -38,8 +46,13 @@ html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
   min-height: 100svh;
-  padding: clamp(16px, 4vw, 40px) var(--gutter)
-           calc(clamp(16px, 4vw, 40px) + env(safe-area-inset-bottom));
+  /* viewport-fit=cover lets the backdrop bleed into display cutouts, so every
+     edge has to reserve its own safe-area inset. */
+  padding:
+    calc(var(--pad-block) + env(safe-area-inset-top, 0px))
+    calc(var(--gutter) + env(safe-area-inset-right, 0px))
+    calc(var(--pad-block) + env(safe-area-inset-bottom, 0px))
+    calc(var(--gutter) + env(safe-area-inset-left, 0px));
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -70,10 +83,16 @@ body {
    -------------------------------------------------------------------------- */
 
 .cabinet {
-  /* Keep the whole cabinet on screen: the board shrinks before the page scrolls. */
-  --chrome: 330px;
+  /* Keep the whole cabinet on screen: the board shrinks before the page scrolls.
+     --chrome is the height of everything stacked above and below the square
+     stage; --floor is a legibility limit (a bare calc() would clamp to 0 and
+     hide the board on a very short window). Viewports too short for the stack
+     switch to the side-by-side layout at the bottom of this file, so the floor
+     is only ever reached in a window that is both short and narrow. */
+  --chrome: 286px;
+  --floor: 180px;
   width: 100%;
-  max-width: min(580px, max(260px, calc(100svh - var(--chrome))));
+  max-width: min(580px, max(var(--floor), calc(100svh - var(--frame) - var(--chrome))));
   display: grid;
   gap: clamp(14px, 2.6vw, 20px);
 }
@@ -133,6 +152,9 @@ body {
 
 .stat {
   display: grid;
+  /* A fixed value row keeps the three labels aligned even when a long score
+     forces its pixel canvas down to a smaller integer scale. */
+  grid-template-rows: auto 28px;
   gap: 7px;
   justify-items: start;
   min-width: 0;
@@ -146,8 +168,8 @@ body {
 }
 
 .stat__value {
-  display: block;
-  min-height: 16px;
+  display: flex;
+  align-items: flex-end;   /* smaller canvases still sit on the same baseline */
 }
 
 .stat__value.is-bumped { animation: score-pop 260ms ease-out; }
@@ -522,7 +544,7 @@ kbd {
 /* Touch devices and narrow screens get the on-screen pad */
 @media (pointer: coarse), (max-width: 760px) {
   .dpad { display: grid; }
-  .cabinet { --chrome: 400px; }
+  .cabinet { --chrome: 368px; }
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -564,6 +586,58 @@ kbd {
   .sfx { padding: 8px; }
   .sfx__text { display: none; }
   .legend { grid-template-columns: 1fr; gap: 8px; }
+}
+
+/* --------------------------------------------------------------------------
+   Short viewports (landscape phones, squat windows)
+
+   There is no vertical room to stack marquee → HUD → board → controls, so the
+   cabinet turns on its side: the board takes the full remaining height and the
+   chrome sits beside it. Nothing falls below the fold.
+   -------------------------------------------------------------------------- */
+
+@media (max-height: 620px) and (min-width: 560px) {
+  body { align-items: center; }
+
+  .cabinet {
+    width: auto;
+    max-width: none;
+    grid-template-columns: auto minmax(280px, 380px);
+    grid-template-rows: auto auto 1fr auto;
+    grid-template-areas:
+      "stage marquee"
+      "stage hud"
+      "stage controls"
+      "stage footnote";
+    align-content: center;
+    column-gap: clamp(16px, 3vw, 28px);
+    row-gap: 8px;
+  }
+
+  .marquee  { grid-area: marquee; }
+  .hud      { grid-area: hud; }
+  .stage    { grid-area: stage; align-self: center; }
+  .controls { grid-area: controls; align-content: center; }
+  .footnote { grid-area: footnote; }
+
+  .stage {
+    width: auto;
+    height: calc(100svh - var(--frame));
+    max-height: 580px;
+  }
+
+  /* Everything beside the board gets tighter so the column never outgrows it */
+  .marquee { gap: 4px; }
+  .hud { padding: 8px 14px; }
+  .legend { gap: 6px clamp(12px, 3vw, 20px); }
+  .footnote { display: none; }
+
+  .dpad {
+    grid-template-columns: repeat(3, 48px);
+    grid-template-rows: repeat(3, 48px);
+  }
+
+  .dpad__btn svg { width: 22px; height: 22px; }
 }
 
 /* --------------------------------------------------------------------------

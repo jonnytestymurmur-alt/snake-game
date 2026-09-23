@@ -21,15 +21,15 @@
   <section class="hud" aria-label="Scoreboard">
     <div class="stat">
       <span class="stat__label">Score</span>
-      <span class="stat__value" id="stat-score" data-pixel="0" data-tone="cyan" data-scale="4"></span>
+      <span class="stat__value" id="stat-score" data-pixel-group="hud" data-pixel="0" data-tone="cyan" data-scale="4"></span>
     </div>
     <div class="stat">
       <span class="stat__label">Best</span>
-      <span class="stat__value" id="stat-best" data-pixel="0" data-tone="amber" data-scale="4"></span>
+      <span class="stat__value" id="stat-best" data-pixel-group="hud" data-pixel="0" data-tone="amber" data-scale="4"></span>
     </div>
     <div class="stat">
       <span class="stat__label">Level</span>
-      <span class="stat__value" id="stat-level" data-pixel="1" data-tone="pink" data-scale="4"></span>
+      <span class="stat__value" id="stat-level" data-pixel-group="hud" data-pixel="1" data-tone="pink" data-scale="4"></span>
     </div>
     <button class="sfx" id="sfx-toggle" type="button" aria-pressed="true" aria-label="Sound effects: on">
       <svg class="sfx__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -72,8 +72,8 @@
       <div class="screen screen--over" data-for="over">
         <p class="screen__headline screen__headline--over" data-pixel="GAME OVER" data-tone="pink" data-scale="7"></p>
         <dl class="tally">
-          <div class="tally__row"><dt>Score</dt><dd id="final-score" data-pixel="0" data-tone="cyan" data-scale="5"></dd></div>
-          <div class="tally__row"><dt>Best</dt><dd id="final-best" data-pixel="0" data-tone="amber" data-scale="5"></dd></div>
+          <div class="tally__row"><dt>Score</dt><dd id="final-score" data-pixel-group="tally" data-pixel="0" data-tone="cyan" data-scale="5"></dd></div>
+          <div class="tally__row"><dt>Best</dt><dd id="final-best" data-pixel-group="tally" data-pixel="0" data-tone="amber" data-scale="5"></dd></div>
         </dl>
         <p class="screen__record" id="record-banner" data-pixel="NEW HIGH SCORE" data-tone="amber" data-scale="4" hidden></p>
         <p class="screen__hint">Enter or tap to play again</p>
